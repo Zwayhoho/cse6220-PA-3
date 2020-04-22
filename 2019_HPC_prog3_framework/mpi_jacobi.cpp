@@ -249,38 +249,35 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
 
 void distributed_matrix_vector_mult(const int n, double* local_A, double* local_x, double* local_y, MPI_Comm comm)
 {
-    // TODO
-    // retrieve Cartesian topology information
+    MPI_Comm row_comm;
     int d[2];
     int loop[2];
     int mesh_location[2];
     MPI_Cart_get(comm, 2, d, loop, mesh_location);
-    MPI_Comm row_comm;
     MPI_Comm_split(comm, mesh_location[0], mesh_location[1], &row_comm);
 
-    // number of rows or columns
+
     int m = d[0]; 
     int num_rows = block_decompose(n, m, mesh_location[0]);
+
+
     int num_cols = block_decompose(n, m, mesh_location[1]);
 
-    // transfer x to other processors
     double *transposed_x = new double[num_cols]; 
     transpose_bcast_vector(n, local_x, transposed_x, comm);
 
-    // product of A*x
-    double *product_Ax = new double[num_rows];
 
-    // calcualte product of local A*x
+    double *result = new double[num_rows];
+
     for (int i = 0; i < num_rows; i++)
     {
-        product_Ax[i] = 0;
+        result[i] = 0;
         for (int j = 0; j < num_cols; j++){
-            product_Ax[i] += local_A[i*num_cols + j] * transposed_x[j];
+            result[i] =result[i] + local_A[i*num_cols + j] * transposed_x[j];
         }
     }
 
-    // reduce/sum product_Ax to local_y at first colum
-    MPI_Reduce(product_Ax, local_y, num_rows, MPI_DOUBLE, MPI_SUM, 0, row_comm);
+    MPI_Reduce(result, local_y, num_rows, MPI_DOUBLE, MPI_SUM, 0, row_comm);
 }
 
 // Solves Ax = b using the iterative jacobi method
