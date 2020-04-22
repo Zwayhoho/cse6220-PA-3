@@ -210,48 +210,40 @@ void distribute_matrix(const int n, double* input_matrix, double** local_matrix,
 
 void transpose_bcast_vector(const int n, double* col_vector, double* row_vector, MPI_Comm comm)
 {
-    // TODO
-    // retrieve Cartesian topology information
     int d[2];
     int loop[2];
     int mesh_location[2];
     MPI_Cart_get(comm, 2, d, loop, mesh_location);
 
-    // number of rows or columns
+    // get # of col and row
     int m = d[0];
     int num_rows = block_decompose(n, m, mesh_location[0]);
     int num_cols = block_decompose(n, m, mesh_location[1]); 
     
-    // send local data to diagonal processors from first column
-    // processor(0,0)
     if (mesh_location[0] == 0 && mesh_location[1] == 0)
     {
         for (int i = 0; i < num_rows; i++) {
             row_vector[i] = col_vector[i];
         }
-    }
-    // other processors in first column
-    else if (mesh_location[1] == 0)
-    {
-        int diag_coordinates[] = {mesh_location[0], mesh_location[0]};
-        int diag_rank; 
-        MPI_Cart_rank(comm, diag_coordinates, &diag_rank);
-        MPI_Send(&col_vector[0], num_rows, MPI_DOUBLE, diag_rank, 1, comm);
-    }
-    // disgonal processors receive data
-    else if (mesh_location[0] == mesh_location[1])
-    {
+    }else if (mesh_location[1] == 0){
+    
+        int locationDIAG[] = {mesh_location[0], mesh_location[0]};
+        int rankDcopy; 
+        int rankD; 
+        MPI_Cart_rank(comm, locationDIAG, &rankD);
+        MPI_Send(&col_vector[0], num_rows, MPI_DOUBLE, rankD, 1, comm);
+        rankDcopy = rankD;
+    }else if (mesh_location[0] == mesh_location[1]){
         int original_coordinates[] = {mesh_location[0], 0};
-        int original_rank; 
-        MPI_Cart_rank(comm, original_coordinates, &original_rank);
-        MPI_Recv(&row_vector[0], num_rows, MPI_DOUBLE, original_rank, 1, comm, MPI_STATUS_IGNORE);
+        int rankBegin; 
+        MPI_Cart_rank(comm, original_coordinates, &rankBegin);
+        MPI_Recv(&row_vector[0], num_rows, MPI_DOUBLE, rankBegin, 1, comm, MPI_STATUS_IGNORE);
     }
-
-    // diagonal processors distribute data along column
     MPI_Comm column_comm;
     MPI_Comm_split(comm, mesh_location[1], mesh_location[0], &column_comm);
     MPI_Bcast(row_vector, num_cols, MPI_DOUBLE, mesh_location[1], column_comm);
-    // release the comm
+    
+    // FREE COMM
     MPI_Comm_free(&column_comm);
 }
 
