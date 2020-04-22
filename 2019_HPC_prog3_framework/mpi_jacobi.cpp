@@ -217,12 +217,12 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
 
     // get # of col and row
     int m = d[0];
-    int num_rows = block_decompose(n, m, mesh_location[0]);
+    int rowcount = block_decompose(n, m, mesh_location[0]);
     int num_cols = block_decompose(n, m, mesh_location[1]); 
     
     if (mesh_location[0] == 0 && mesh_location[1] == 0)
     {
-        for (int i = 0; i < num_rows; i++) {
+        for (int i = 0; i < rowcount; i++) {
             row_vector[i] = col_vector[i];
         }
     }else if (mesh_location[1] == 0){
@@ -231,13 +231,13 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
         int rankDcopy; 
         int rankD; 
         MPI_Cart_rank(comm, locationDIAG, &rankD);
-        MPI_Send(&col_vector[0], num_rows, MPI_DOUBLE, rankD, 1, comm);
+        MPI_Send(&col_vector[0], rowcount, MPI_DOUBLE, rankD, 1, comm);
         rankDcopy = rankD;
     }else if (mesh_location[0] == mesh_location[1]){
         int original_coordinates[] = {mesh_location[0], 0};
         int rankBegin; 
         MPI_Cart_rank(comm, original_coordinates, &rankBegin);
-        MPI_Recv(&row_vector[0], num_rows, MPI_DOUBLE, rankBegin, 1, comm, MPI_STATUS_IGNORE);
+        MPI_Recv(&row_vector[0], rowcount, MPI_DOUBLE, rankBegin, 1, comm, MPI_STATUS_IGNORE);
     }
     MPI_Comm column_comm;
     MPI_Comm_split(comm, mesh_location[1], mesh_location[0], &column_comm);
@@ -258,7 +258,7 @@ void distributed_matrix_vector_mult(const int n, double* local_A, double* local_
 
 
     int m = d[0]; 
-    int num_rows = block_decompose(n, m, mesh_location[0]);
+    int rowcount = block_decompose(n, m, mesh_location[0]);
 
 
     int num_cols = block_decompose(n, m, mesh_location[1]);
@@ -267,9 +267,9 @@ void distributed_matrix_vector_mult(const int n, double* local_A, double* local_
     transpose_bcast_vector(n, local_x, transposed_x, comm);
 
 
-    double *result = new double[num_rows];
+    double *result = new double[rowcount];
 
-    for (int i = 0; i < num_rows; i++)
+    for (int i = 0; i < rowcount; i++)
     {
         result[i] = 0;
         for (int j = 0; j < num_cols; j++){
@@ -277,7 +277,7 @@ void distributed_matrix_vector_mult(const int n, double* local_A, double* local_
         }
     }
 
-    MPI_Reduce(result, local_y, num_rows, MPI_DOUBLE, MPI_SUM, 0, COM_ROW);
+    MPI_Reduce(result, local_y, rowcount, MPI_DOUBLE, MPI_SUM, 0, COM_ROW);
 }
 
 // Solves Ax = b using the iterative jacobi method
@@ -297,12 +297,12 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
 
     // number of rows or columns
     int m = d[0];
-    int num_rows = block_decompose(n, m, mesh_location[0]); 
+    int rowcount = block_decompose(n, m, mesh_location[0]); 
     int num_cols = block_decompose(n, m, mesh_location[1]); 
 
     // initialize R, diagonal elements as 0, others as A(i,j)
-    double* R = new double[num_rows*num_cols];
-    for (int i = 0; i < num_rows; i++){
+    double* R = new double[rowcount*num_cols];
+    for (int i = 0; i < rowcount; i++){
         for (int j = 0; j < num_cols; j++){
             if (mesh_location[0]==mesh_location[1] && i==j){
                 R[i*num_cols + j] = 0;
@@ -318,8 +318,8 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
     MPI_Comm_split(comm, mesh_location[0], mesh_location[1], &COM_ROW);
     MPI_Comm column_comm;
     MPI_Comm_split(comm, mesh_location[1], mesh_location[0], &column_comm);
-    double *temp = new double[num_rows];
-    for (int i = 0; i < num_rows; i++) {
+    double *temp = new double[rowcount];
+    for (int i = 0; i < rowcount; i++) {
         if (mesh_location[0]==mesh_location[1]){
             temp[i] = local_A[i*num_cols + i];
         }
@@ -329,25 +329,25 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
     }
     double *D_diag = NULL;
     if (mesh_location[1] == 0) {
-        D_diag = new double[num_rows];
+        D_diag = new double[rowcount];
     }
-    MPI_Reduce(temp, D_diag, num_rows, MPI_DOUBLE, MPI_SUM, 0, COM_ROW);
+    MPI_Reduce(temp, D_diag, rowcount, MPI_DOUBLE, MPI_SUM, 0, COM_ROW);
 
     // initialize local_x
-    for (int i = 0; i < num_rows; i++){
+    for (int i = 0; i < rowcount; i++){
         local_x[i] = 0.0;
     }
 
     // product of R*x at first column
     double *sum_Rx = NULL; 
     if (mesh_location[1] == 0){
-        sum_Rx = new double[num_rows];
+        sum_Rx = new double[rowcount];
     }
 
     // product of A*x at first column
     double *sum_Ax = NULL;
     if (mesh_location[1] == 0){
-        sum_Ax = new double[num_rows];
+        sum_Ax = new double[rowcount];
     }
 
     // iteration check, continue or stop
@@ -367,7 +367,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         {
             double sum_error = 0;
             double local_error = 0;
-            for (int i = 0; i < num_rows; i++) {
+            for (int i = 0; i < rowcount; i++) {
                 local_error += (sum_Ax[i]-local_b[i])*(sum_Ax[i]-local_b[i]);
             }
             // reduce/sum local_error to processor 0
@@ -390,7 +390,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         else if (mesh_location[1] == 0) 
         {
             // update local_x with D^(-1)*(b-R*x)
-            for (int i = 0; i < num_rows; i++) {
+            for (int i = 0; i < rowcount; i++) {
                 local_x[i] = (local_b[i]-sum_Rx[i]) / D_diag[i];
             }
         }
