@@ -25,17 +25,17 @@ void distribute_vector(const int n, double* input_vector, double** local_vector,
 {
     // TODO
     // retrieve Cartesian topology information
-    int dimension[2];
-    int periods[2];
-    int coordinates[2];
-    MPI_Cart_get(comm, 2, dimension, periods, coordinates);
-    int m = dimension[0];
+    int d[2];
+    int loop[2];
+    int mesh_location[2];
+    MPI_Cart_get(comm, 2, d, loop, mesh_location);
+    int m = d[0];
     int rank; 
     MPI_Comm_rank(comm, &rank);
 
     //create comm for the first column
     int color;
-    if (coordinates[1]==0){
+    if (mesh_location[1]==0){
         color = 0;
     }
     else{
@@ -69,7 +69,7 @@ void distribute_vector(const int n, double* input_vector, double** local_vector,
     //send data from processor(0,0) onto processors(i,0)
     if (color == 0)
     {
-        int recvcount = block_decompose(n, m, coordinates[0]);
+        int recvcount = block_decompose(n, m, mesh_location[0]);
         double *recvbuf = new double[recvcount];
         MPI_Scatterv(&input_vector[0], sendcounts, displs, MPI_DOUBLE, 
         recvbuf, recvcount, MPI_DOUBLE, rankzero, first_column);
@@ -82,23 +82,23 @@ void gather_vector(const int n, double* local_vector, double* output_vector, MPI
 {
     // TODO
     // retrieve Cartesian topology information
-    int dimension[2];
-    int periods[2];
-    int coordinates[2];
-    MPI_Cart_get(comm, 2, dimension, periods, coordinates);
+    int d[2];
+    int loop[2];
+    int mesh_location[2];
+    MPI_Cart_get(comm, 2, d, loop, mesh_location);
 
     // get sendcount for gathering
-    int m = dimension[0];
-    int sendcount = block_decompose(n, m, coordinates[0]);
+    int m = d[0];
+    int sendcount = block_decompose(n, m, mesh_location[0]);
 
     //create comm for the column
     MPI_Comm column_comm;
-    MPI_Comm_split(comm, coordinates[1], coordinates[0], &column_comm);
+    MPI_Comm_split(comm, mesh_location[1], mesh_location[0], &column_comm);
 
     //calculate the parameters for gathering
     int *recvcounts = NULL;
     int *displs = NULL;
-    if (coordinates[0]==0 && coordinates[1]==0)
+    if (mesh_location[0]==0 && mesh_location[1]==0)
     {
         recvcounts = new int[m];
         displs = new int[m];
@@ -115,7 +115,7 @@ void gather_vector(const int n, double* local_vector, double* output_vector, MPI
     }
     
     //Gather data from processors (i,0) onto the processor (0,0)
-    if(coordinates[1]==0){
+    if(mesh_location[1]==0){
         MPI_Gatherv(local_vector, sendcount, MPI_DOUBLE, output_vector, 
         recvcounts, displs, MPI_DOUBLE, 0, column_comm);
     }
@@ -127,18 +127,18 @@ void distribute_matrix(const int n, double* input_matrix, double** local_matrix,
 {
     // TODO
     // retrieve Cartesian topology information
-    int dimension[2];
-    int periods[2];
-    int coordinates[2];
-    MPI_Cart_get(comm, 2, dimension, periods, coordinates);
+    int d[2];
+    int loop[2];
+    int mesh_location[2];
+    MPI_Cart_get(comm, 2, d, loop, mesh_location);
     int rank; 
     MPI_Comm_rank(comm, &rank);
     
     //calculate the parameters for distribution
     //number of rows or cols sent to other processors
-    int m = dimension[0]; 
-    int recvcountrow = block_decompose(n, m, coordinates[0]);
-    int recvcountcol = block_decompose(n, m, coordinates[1]);
+    int m = d[0]; 
+    int recvcountrow = block_decompose(n, m, mesh_location[0]);
+    int recvcountcol = block_decompose(n, m, mesh_location[1]);
 
     //setup parameters for distribution
     int firstgridcoords[2] = {0,0};
@@ -188,7 +188,7 @@ void distribute_matrix(const int n, double* input_matrix, double** local_matrix,
         //create new communicators
         MPI_Comm rows_comm;
         int color;
-        if (coordinates[0] < n%m){
+        if (mesh_location[0] < n%m){
             color = 0;
         }
         else {
@@ -212,36 +212,36 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
 {
     // TODO
     // retrieve Cartesian topology information
-    int dimension[2];
-    int periods[2];
-    int coordinates[2];
-    MPI_Cart_get(comm, 2, dimension, periods, coordinates);
+    int d[2];
+    int loop[2];
+    int mesh_location[2];
+    MPI_Cart_get(comm, 2, d, loop, mesh_location);
 
     // number of rows or columns
-    int m = dimension[0];
-    int num_rows = block_decompose(n, m, coordinates[0]);
-    int num_cols = block_decompose(n, m, coordinates[1]); 
+    int m = d[0];
+    int num_rows = block_decompose(n, m, mesh_location[0]);
+    int num_cols = block_decompose(n, m, mesh_location[1]); 
     
     // send local data to diagonal processors from first column
     // processor(0,0)
-    if (coordinates[0] == 0 && coordinates[1] == 0)
+    if (mesh_location[0] == 0 && mesh_location[1] == 0)
     {
         for (int i = 0; i < num_rows; i++) {
             row_vector[i] = col_vector[i];
         }
     }
     // other processors in first column
-    else if (coordinates[1] == 0)
+    else if (mesh_location[1] == 0)
     {
-        int diag_coordinates[] = {coordinates[0], coordinates[0]};
+        int diag_coordinates[] = {mesh_location[0], mesh_location[0]};
         int diag_rank; 
         MPI_Cart_rank(comm, diag_coordinates, &diag_rank);
         MPI_Send(&col_vector[0], num_rows, MPI_DOUBLE, diag_rank, 1, comm);
     }
     // disgonal processors receive data
-    else if (coordinates[0] == coordinates[1])
+    else if (mesh_location[0] == mesh_location[1])
     {
-        int original_coordinates[] = {coordinates[0], 0};
+        int original_coordinates[] = {mesh_location[0], 0};
         int original_rank; 
         MPI_Cart_rank(comm, original_coordinates, &original_rank);
         MPI_Recv(&row_vector[0], num_rows, MPI_DOUBLE, original_rank, 1, comm, MPI_STATUS_IGNORE);
@@ -249,8 +249,8 @@ void transpose_bcast_vector(const int n, double* col_vector, double* row_vector,
 
     // diagonal processors distribute data along column
     MPI_Comm column_comm;
-    MPI_Comm_split(comm, coordinates[1], coordinates[0], &column_comm);
-    MPI_Bcast(row_vector, num_cols, MPI_DOUBLE, coordinates[1], column_comm);
+    MPI_Comm_split(comm, mesh_location[1], mesh_location[0], &column_comm);
+    MPI_Bcast(row_vector, num_cols, MPI_DOUBLE, mesh_location[1], column_comm);
     // release the comm
     MPI_Comm_free(&column_comm);
 }
@@ -259,17 +259,17 @@ void distributed_matrix_vector_mult(const int n, double* local_A, double* local_
 {
     // TODO
     // retrieve Cartesian topology information
-    int dimension[2];
-    int periods[2];
-    int coordinates[2];
-    MPI_Cart_get(comm, 2, dimension, periods, coordinates);
+    int d[2];
+    int loop[2];
+    int mesh_location[2];
+    MPI_Cart_get(comm, 2, d, loop, mesh_location);
     MPI_Comm row_comm;
-    MPI_Comm_split(comm, coordinates[0], coordinates[1], &row_comm);
+    MPI_Comm_split(comm, mesh_location[0], mesh_location[1], &row_comm);
 
     // number of rows or columns
-    int m = dimension[0]; 
-    int num_rows = block_decompose(n, m, coordinates[0]);
-    int num_cols = block_decompose(n, m, coordinates[1]);
+    int m = d[0]; 
+    int num_rows = block_decompose(n, m, mesh_location[0]);
+    int num_cols = block_decompose(n, m, mesh_location[1]);
 
     // transfer x to other processors
     double *transposed_x = new double[num_cols]; 
@@ -296,10 +296,10 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
 {
     // TODO
     // retrieve Cartesian topology information
-    int dimension[2];
-    int periods[2];
-    int coordinates[2];
-    MPI_Cart_get(comm, 2, dimension, periods, coordinates);
+    int d[2];
+    int loop[2];
+    int mesh_location[2];
+    MPI_Cart_get(comm, 2, d, loop, mesh_location);
 
     // rank of coordinate_zero
     int coordinate_zero[] = {0,0};
@@ -307,15 +307,15 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
     MPI_Cart_rank(comm, coordinate_zero, &rankzero);
 
     // number of rows or columns
-    int m = dimension[0];
-    int num_rows = block_decompose(n, m, coordinates[0]); 
-    int num_cols = block_decompose(n, m, coordinates[1]); 
+    int m = d[0];
+    int num_rows = block_decompose(n, m, mesh_location[0]); 
+    int num_cols = block_decompose(n, m, mesh_location[1]); 
 
     // initialize R, diagonal elements as 0, others as A(i,j)
     double* R = new double[num_rows*num_cols];
     for (int i = 0; i < num_rows; i++){
         for (int j = 0; j < num_cols; j++){
-            if (coordinates[0]==coordinates[1] && i==j){
+            if (mesh_location[0]==mesh_location[1] && i==j){
                 R[i*num_cols + j] = 0;
             }
             else {
@@ -326,12 +326,12 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         
     // calculate matrix D = diag(A)
     MPI_Comm row_comm;
-    MPI_Comm_split(comm, coordinates[0], coordinates[1], &row_comm);
+    MPI_Comm_split(comm, mesh_location[0], mesh_location[1], &row_comm);
     MPI_Comm column_comm;
-    MPI_Comm_split(comm, coordinates[1], coordinates[0], &column_comm);
+    MPI_Comm_split(comm, mesh_location[1], mesh_location[0], &column_comm);
     double *temp = new double[num_rows];
     for (int i = 0; i < num_rows; i++) {
-        if (coordinates[0]==coordinates[1]){
+        if (mesh_location[0]==mesh_location[1]){
             temp[i] = local_A[i*num_cols + i];
         }
         else {
@@ -339,7 +339,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         }
     }
     double *D_diag = NULL;
-    if (coordinates[1] == 0) {
+    if (mesh_location[1] == 0) {
         D_diag = new double[num_rows];
     }
     MPI_Reduce(temp, D_diag, num_rows, MPI_DOUBLE, MPI_SUM, 0, row_comm);
@@ -351,13 +351,13 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
 
     // product of R*x at first column
     double *sum_Rx = NULL; 
-    if (coordinates[1] == 0){
+    if (mesh_location[1] == 0){
         sum_Rx = new double[num_rows];
     }
 
     // product of A*x at first column
     double *sum_Ax = NULL;
-    if (coordinates[1] == 0){
+    if (mesh_location[1] == 0){
         sum_Ax = new double[num_rows];
     }
 
@@ -374,7 +374,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         distributed_matrix_vector_mult(n, local_A, local_x, sum_Ax, comm);
         
         // compare the error with l2_termination
-        if (coordinates[1] == 0)
+        if (mesh_location[1] == 0)
         {
             double sum_error = 0;
             double local_error = 0;
@@ -384,7 +384,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
             // reduce/sum local_error to processor 0
             MPI_Reduce(&local_error, &sum_error, 1, MPI_DOUBLE, MPI_SUM, 0, column_comm);
 
-            if (coordinates[0] == 0 && sum_error < l2_termination)
+            if (mesh_location[0] == 0 && sum_error < l2_termination)
             {
                 iteration_status = true;
             }
@@ -398,7 +398,7 @@ void distributed_jacobi(const int n, double* local_A, double* local_b, double* l
         {
             break;
         }
-        else if (coordinates[1] == 0) 
+        else if (mesh_location[1] == 0) 
         {
             // update local_x with D^(-1)*(b-R*x)
             for (int i = 0; i < num_rows; i++) {
