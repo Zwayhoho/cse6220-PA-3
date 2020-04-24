@@ -14,19 +14,19 @@
 // my implementation:
 #include <iostream>
 #include <math.h>
-#include <vector>
+using namespace std;
 
 // Calculates y = A*x for a square n-by-n matrix A, and n-dimensional vectors x
 // and y
 void matrix_vector_mult(const int n, const double* A, const double* x, double* y)
 {
     // TODO
-	for (int i=0; i<n; i++){
-		y[i]=0;
-		for (int j=0; j<n; j++){
-			y[i] = y[i] + A[i*n+j]*x[j];
-		}
-	}
+    for (int i = 0; i < n; ++i) {
+        y[i] = 0;
+        for (int j = 0; j < n; ++j) {
+            y[i] += x[j] * A[i * n + j];
+        }
+    }
 }
 
 // Calculates y = A*x for a n-by-m matrix A, a m-dimensional vector x
@@ -34,65 +34,48 @@ void matrix_vector_mult(const int n, const double* A, const double* x, double* y
 void matrix_vector_mult(const int n, const int m, const double* A, const double* x, double* y)
 {
     // TODO
-	for (int i=0; i<n; i++){
-		y[i]=0;
-		for (int j=0; j<m; j++){
-			y[i] = y[i] + A[i*n+j]*x[j];
-		}
-	}
+    for (int i = 0; i < n; ++i) {
+        y[i] = 0;
+        for (int j = 0; j < m; ++j) {
+            y[i] += x[j] * A[i * m + j];
+        }
+    }
 }
 
 // implements the sequential jacobi method
 void jacobi(const int n, double* A, double* b, double* x, int max_iter, double l2_termination)
 {
     // TODO
-    	// Create array for Diag, R and y
-	std::vector<double> Diag(n);
-	std::vector<double> R(n*n);
-	std::vector<double> y(n);
+    double Diag[n], R[n * n], tempx[n];
+    double templ2 = 0.0;
+    int cnt = 0, stoppoint;
 
-	// initialization for iteration, x, R and Diag
-	int iteration = 0;
-	for (int i=0; i<n; i++){
-		x[i] = 0.0;
-	}
+    //Set the matrix
+    for(int i = 0; i < n; ++i){
+        x[i] = 0;
+        for(int j =0; j < n; ++j){
+            if(i != j){
+                R[i * n + j] = A[i * n + j];
+            }else{
+                R[i * n + j] = 0;
+                Diag[i] = A[i * n + j];
+            }
+        }
+    }
 
-	for (int i = 0; i < n; ++i) {
-		Diag[i] = A[i*n + i];
-		for (int j = 0; j < n; ++j) {
-			if (i==j){
-				R[i*n + j] = 0.0;
-			} 
-			else{
-				R[i*n + j] = A[i*n + j];
-			}
-		}
-	}
+    while(cnt++ < max_iter){
+        matrix_vector_mult(n, R, x, tempx);
+        for(int i = 0; i < n; ++i){
+            x[i] = ((b[i]-tempx[i]) / Diag[i]);
+        }
+        matrix_vector_mult(n, A, x, tempx);
+        for(int i = 0; i < n; ++i){
+            templ2 += ((tempx[i] - b[i]) * (tempx[i] - b[i]));
+        }
+        stoppoint = sqrt(templ2);
+        if(l2_termination > stoppoint){
+            break;
+        }
+    }
 
-	//Do the interation
-	while (iteration < max_iter) {
-	
-		//Calculate value of y
-		matrix_vector_mult(n, &A[0], &x[0], &y[0]);
-
-		//initialization of l2
-		double l2 = 0.0;
-
-		for (int i = 0; i < n; i++){
-			l2 += (y[i] - b[i])*(y[i] - b[i]);
-		}
-		l2 = sqrt(l2);
-		
-		//termination criterion
-		if (l2 > l2_termination) {
-			matrix_vector_mult(n, &R[0], &x[0], &y[0]);
-			for (int i = 0; i < n; i++){
-				x[i] = (b[i] - y[i]) / Diag[i];
-			}
-		} 
-		else{
-				break;
-			}
-		iteration = iteration + 1;
-	}
 }
